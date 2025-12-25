@@ -16,6 +16,25 @@ from core.post_mapping.utils import ensure_post_database_exists, validate_window
 from core.sync_data import SyncData
 from core.utils import create_dir_if_not_exists, create_text_document, parse_offset_time
 
+#Long dirname fix START
+import sys
+
+def utf8_char_len(c):
+    codepoint = ord(c)
+    if codepoint <= 0x7f:
+        return 1
+    if codepoint <= 0x7ff:
+        return 2
+    if codepoint <= 0xffff:
+        return 3
+    if codepoint <= 0x10ffff:
+        return 4
+    raise ValueError('Invalid Unicode character: ' + hex(codepoint))
+
+def utf8len(s):
+    return sum(utf8_char_len(c) for c in s)
+
+#Long dirname fix END
 
 async def _fetch_media(
         media_type: ContentType,
@@ -179,6 +198,9 @@ async def fetch_and_save_posts(
         for post in post_pool.get_posts(offset):
             tasks = []
             post_path = posts_path / post.id
+            
+            print('conf.enable_post_masquerad: ' + str(conf.enable_post_masquerade));
+            
             if conf.enable_post_masquerade:
                 existing_post_data = post_db_client.get_post(post.id)
                 if existing_post_data:
@@ -186,13 +208,26 @@ async def fetch_and_save_posts(
                 else:
                     if len(post.title):
                         human_filename = validate_windows_dir_name(post.title)
+                        #Long dirname fix START
+                        #'5bd54c48-f79e-4e09-aa09-47f8ba83afec':
+                        char_count = utf8len(human_filename)
+                        if char_count > 255 :
+                            short_txt = '';
+                            for c in human_filename :
+                                c_utf8len = utf8len(short_txt + c)
+                                if c_utf8len <= 255 :
+                                    short_txt = short_txt + c;
+                            human_filename = short_txt
+                        #Long dirname fix END
                     else:
                         human_filename = post.id
                     post_path = posts_path / human_filename
                     if len(post_db_client.get_posts_by_path(str(post_path))):
                         post_path = posts_path / (human_filename + "_" + post.id)
                     post_db_client.create_post(creator_name, str(post_path), post.id)
-
+                
+                print('post_path: ' + str(post_path));
+                
             create_dir_if_not_exists(post_path)
 
             await create_text_document(
